@@ -1,0 +1,74 @@
+name:                janus-connector
+version:             0.1.0.0
+-- synopsis:
+-- description:
+homepage:            https://github.com/githubuser/webTools#readme
+license:             BSD3
+license-file:        LICENSE
+author:              oofp
+maintainer:          oofpgit@gmail.com
+copyright:           2017 oofp
+category:            Comm
+build-type:          Simple
+extra-source-files:  README.md
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      src
+  ghc-options:         -Wall
+  exposed-modules:     Comm.Janus.JanusConnector
+                     , Comm.Janus.Msgs.CallReq
+                     , Comm.Janus.Msgs.Candidate
+                     , Comm.Janus.Msgs.CreateConReq
+                     , Comm.Janus.Msgs.CreateHandlerReq
+                     , Comm.Janus.Msgs.DetachHandlerReq
+                     , Comm.Janus.Msgs.HangupReq
+                     , Comm.Janus.Msgs.JSEP
+                     , Comm.Janus.Msgs.JanusEvent
+                     , Comm.Janus.Msgs.RegisterReq
+                     , Comm.Janus.Msgs.AcceptReq
+                     , Comm.Janus.Msgs.SessionReq
+                     , Comm.Janus.Msgs.TrickleConnectedReq
+                     , Comm.Janus.Msgs.TrickleReq
+  other-modules:       Comm.Janus.Internal.JanusInternalData
+  build-depends:       base >= 4.7 && < 5
+                     , protolude 
+                     , text
+                     , bytestring
+                     , stm-containers
+                     , stm
+                     , aeson
+                     , raw-strings-qq
+                     , websockets
+                     , network
+                     , hslogger
+  default-language:    Haskell2010
+  default-extensions:  OverloadedStrings, NoImplicitPrelude
+
+executable JanusSample
+  hs-source-dirs:      Examples
+  main-is:             Main.hs
+  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
+  build-depends:       base
+                     , janus-connector
+                     , hslogger
+                     , stm
+                     , text
+                     , protolude 
+  default-language:    Haskell2010
+  default-extensions:  OverloadedStrings, NoImplicitPrelude
+
+test-suite janus-connector-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  build-depends:       base
+                     , janus-connector
+                     , protolude 
+  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
+  default-language:    Haskell2010
+  default-extensions:  OverloadedStrings, NoImplicitPrelude
+
+source-repository head
+  type:     git
+  location: https://github.com/githubuser/JanusConnector
