@@ -35,7 +35,7 @@ main = do
           in runTest (pack srvIP) srvPort regReq regReq2 (pack dest)
         Nothing ->
           putStrLn ("Failed to parse sip port (must be Int)"::Text)
-    _ -> do putStrLn ("Parametrs: srvIP srvPort sipAOR sipDisplayName sipPwd sipAOR2 sipDisplayName2 sipPwd2 sipProxy dest"::Text)        
+    _ -> do putStrLn ("Parametrs: srvIP srvPort sipAOR sipDisplayName sipPwd sipAOR2 sipDisplayName2 sipPwd2 sipProxy dest sipProxy"::Text)        
             putStrLn ("For example: JanusSample janusserver.com 8188 sip:user@sipprovider.com John 123456 sip:user2@sipprovider.com James 654321 sip:sipprovider.com sip:18001234567@sipprovider.com"::Text)        
 
 
@@ -76,12 +76,8 @@ channelLoop msgChan sipHandler sipHandler2 dest =
     goLoop = do
       (num, msg) <- atomically $ readTChan msgChan
       let otherHandler = if num==0 then sipHandler2 else sipHandler
-          thisHandler =  if num==0 then sipHandler else sipHandler2
       case msg of 
-        JanusCallProgressEvent  Accepted (Just answer) -> do
-          sendJanusRequest (JanusAcceptReq answer) otherHandler
-          sendJanusRequest JanusIceConnected otherHandler
-          sendJanusRequest JanusIceConnected thisHandler
+        JanusCallProgressEvent  Accepted (Just answer) -> sendJanusRequest (JanusAcceptReq answer) otherHandler
         JanusIncomingCall (Just offer) -> sendJanusRequest (JanusCallReq (JanusCallReqPs dest offer)) otherHandler 
         --JanusWebRtcUp -> goLoop
         JanusHangupEvent -> sendJanusRequest JanusHangupReq otherHandler  -- exit

@@ -4,6 +4,9 @@ module Comm.Janus.JanusConnector
   , JanusRegisterEventType (..)
   , JanusCallProgressEventType (..)
   , JanusCallReqPs (..)
+  , JanusEchoReqPs (..)
+  , JanusAudioRoomJoinReqPs (..)
+  , JanusAudioRoomConfigureReqPs (..)
   , JanusRegisterReqPs (..)
   , JanusClientMsg (..)
   , ServerHandler
@@ -39,8 +42,12 @@ import Comm.Janus.Msgs.TrickleReq
 import Comm.Janus.Msgs.TrickleConnectedReq
 import Comm.Janus.Msgs.HangupReq
 import Comm.Janus.Msgs.AcceptReq
+import Comm.Janus.Msgs.EchoReq
+import qualified Comm.Janus.Msgs.AudioRoomConfigureReq as ARCfgReq
+import Comm.Janus.Msgs.AudioRoomJoinReq
 import Comm.Janus.Msgs.JSEP
 import Comm.Janus.Msgs.Candidate
+import Data.HashMap.Strict (lookup)
 
 data JanusRegisterEventType
   = Registering
@@ -59,6 +66,7 @@ data JanusServerMsg
     = JanusRegisterEvent JanusRegisterEventType
     | JanusCallProgressEvent JanusCallProgressEventType (Maybe Text) -- sdpAnswer
     | JanusIncomingCall (Maybe Text)
+    | JanusOKEvent (Maybe Text)
     | JanusWebRtcUp
     | JanusHangupEvent
     deriving (Show, Eq)
@@ -75,9 +83,29 @@ data JanusCallReqPs = JanusCallReqPs
   , sdpOffer :: Text
   } deriving (Show, Eq)
 
+data JanusEchoReqPs = JanusEchoReqPs
+  { echoAudio :: Bool
+  , echoVideo :: Bool
+  , echoSdpOffer :: Text
+  } deriving (Show, Eq)
+
+
+data JanusAudioRoomJoinReqPs = JanusAudioRoomJoinReqPs
+  { audioRoomNum :: Int
+  , audioRoomDisplay :: Text
+  } deriving (Show, Eq)
+
+data JanusAudioRoomConfigureReqPs = JanusAudioRoomConfigureReqPs
+  { audioRoomMute :: Bool
+  , audioRoomSdpOffer :: Text
+  } deriving (Show, Eq)
+
 data JanusClientMsg = JanusDetachHandle
                     | JanusRegisterReq JanusRegisterReqPs
                     | JanusCallReq JanusCallReqPs
+                    | JanusEchoReq JanusEchoReqPs
+                    | JanusAudioRoomJoinReq JanusAudioRoomJoinReqPs
+                    | JanusAudioRoomConfigureReq JanusAudioRoomConfigureReqPs
                     | JanusAcceptReq Text
                     | JanusTrickleReq Text
                     | JanusIceConnected
@@ -229,22 +257,40 @@ handleResponse conHandle transID janusEv = do
 handleSessionResponse :: ConHandle -> Integer -> JanusEvent -> IO ()
 handleSessionResponse conHandle _sessID janusEv =
     case (plugindata janusEv, sender janusEv) of
-      (Just pluginData, Just senderID) -> case getEvent (event $ result $ pData pluginData) of
+      (Just pluginData, Just senderID) -> case getPluginEvent pluginData of
         Nothing -> return ()
         Just evToSend -> handleEvent senderID evToSend
       (Nothing, Just senderID)-> when (Comm.Janus.Msgs.JanusEvent.janus janusEv == "webrtcup") (handleEvent senderID JanusWebRtcUp)
       _ -> return ()
   where
-    getEvent "registering" = Just $ JanusRegisterEvent Registering
-    getEvent "registered" = Just $ JanusRegisterEvent Registered
-    getEvent "registration_failed" = Just $ JanusRegisterEvent RegistrationFailed
-    getEvent "incomingcall" = Just $ JanusIncomingCall jsp
-    getEvent "calling" = Just $ JanusCallProgressEvent Calling jsp
-    getEvent "progress" = Just $ JanusCallProgressEvent Progress jsp
-    getEvent "proceeding" = Just $ JanusCallProgressEvent Proceeding jsp
-    getEvent "accepted" = Just $ JanusCallProgressEvent Accepted jsp
-    getEvent "hangup" = Just JanusHangupEvent
-    getEvent _ = Nothing
+    getPluginEvent (DA.Object obj) = getPluginDataEvent (lookup "plugin" obj) (lookup "data" obj)  
+    getPluginEvent _ = Nothing
+    --
+    getPluginDataEvent (Just "janus.plugin.sip") (Just (DA.Object sipData)) = 
+      getSipResultEvent (lookup "result" sipData)
+    getPluginDataEvent (Just "janus.plugin.echotest") (Just (DA.Object sipData)) = 
+      getOKResultEvent (lookup "result" sipData)
+    getPluginDataEvent (Just "janus.plugin.audiobridge") (Just (DA.Object sipData)) = 
+      getOKResultEvent (lookup "result" sipData)
+    getPluginDataEvent _ _ = Nothing
+    --
+    getSipResultEvent (Just (DA.Object resObject))  = lookup "event" resObject >>= getSipEvent 
+    getSipResultEvent _ = Nothing
+    --
+    getOKResultEvent (Just (DA.String "ok"))  = Just $ JanusOKEvent jsp 
+    getOKResultEvent _ = Nothing
+    --
+    getSipEvent "registering" = Just $ JanusRegisterEvent Registering
+    getSipEvent "registered" = Just $ JanusRegisterEvent Registered
+    getSipEvent "registration_failed" = Just $ JanusRegisterEvent RegistrationFailed
+    getSipEvent "incomingcall" = Just $ JanusIncomingCall jsp
+    getSipEvent "calling" = Just $ JanusCallProgressEvent Calling jsp
+    getSipEvent "progress" = Just $ JanusCallProgressEvent Progress jsp
+    getSipEvent "proceeding" = Just $ JanusCallProgressEvent Proceeding jsp
+    getSipEvent "accepted" = Just $ JanusCallProgressEvent Accepted jsp
+    getSipEvent "hangup" = Just JanusHangupEvent
+    getSipEvent _ = Nothing
+    --
     jsp = encodeJSEP <$> jsep janusEv
     handleEvent senderID evToSend = do
       handlerState <- atomically $ Map.lookup senderID (handlers conHandle)
@@ -292,7 +338,33 @@ handleClientRequest conHandle sessID handlerID JanusIceConnected = do
 handleClientRequest conHandle sessID handlerID JanusHangupReq = do
   transID <- newOnewayTransID conHandle
   sendRequest' (hangupReq sessID handlerID transID) conHandle
-
+handleClientRequest conHandle sessID handlerID (JanusEchoReq echoReqPs) = do
+  infoM  loggerPath ("handleClientRequest (echo):" <> show echoReqPs)
+  let jsepMaybe=decodeJSEP (echoSdpOffer echoReqPs)
+  infoM  loggerPath ("handleClientRequest (echo/jsep):" <> show jsepMaybe)
+  case jsepMaybe of
+    Nothing -> warningM  loggerPath ("Failed to decode (echo/sdp) offer:" <> show echoReqPs)
+    Just jsepOffer -> do
+      infoM  loggerPath ("handleClientRequest (echo) offer decoded:" <> show jsepOffer)
+      transID <- newTransID conHandle
+      infoM  loggerPath ("handleClientRequest (echo) transID:" <> show transID)
+      sendRequest' (echoReq (echoAudio echoReqPs) (echoVideo echoReqPs) jsepOffer sessID handlerID transID) conHandle
+handleClientRequest conHandle sessID handlerID (JanusAudioRoomJoinReq pars) = do
+  infoM  loggerPath ("handleClientRequest (JanusAudioRoomJoinReq):" <> show pars)
+  transID <- newTransID conHandle
+  sendRequest' (audioRoomJoinReq (audioRoomNum pars) (audioRoomDisplay pars) sessID handlerID transID) conHandle
+handleClientRequest conHandle sessID handlerID (JanusAudioRoomConfigureReq pars) = do
+  infoM  loggerPath ("handleClientRequest (JanusAudioRoomConfigureReq):" <> show pars)
+  let jsepMaybe=decodeJSEP (audioRoomSdpOffer pars)
+  infoM  loggerPath ("handleClientRequest (audioRoom/jsep):" <> show jsepMaybe)
+  case jsepMaybe of
+    Nothing -> warningM  loggerPath ("Failed to decode (audioRoom/sdp) offer:" <> show pars)
+    Just jsepOffer -> do
+      infoM  loggerPath ("handleClientRequest (audioRoom) offer decoded:" <> show jsepOffer)
+      transID <- newTransID conHandle
+      infoM  loggerPath ("handleClientRequest (audioRoom) transID:" <> show transID)
+      sendRequest' (ARCfgReq.audioRoomConfigureReq (audioRoomMute pars) jsepOffer sessID handlerID transID) conHandle
+        
 createServerHandler :: ConHandle -> Integer -> Integer -> ServerHandler
 createServerHandler = handleClientRequest
 

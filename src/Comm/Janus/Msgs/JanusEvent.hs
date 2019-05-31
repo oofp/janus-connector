@@ -18,15 +18,20 @@ newtype Result = Result
   { event :: Text
   } deriving (Show,Generic)
 
+{-  
 data PluginDataContent = PluginDataContent
-  {  sip :: Text,
-     result :: Result
+  {  sip :: Maybe Text
+  ,  echotest :: Maybe Text
+  ,  result :: Result
   } deriving (Show,Generic)
+-}
 
-data PluginData = PluginData
+{-
+data SipPluginData = SipPluginData
   { plugin :: Text
   , pData :: PluginDataContent
   } deriving (Show,Generic)
+-}
 
 data JanusEvent = JanusEvent
   { janus :: Text
@@ -34,13 +39,13 @@ data JanusEvent = JanusEvent
   , session_id :: Maybe Integer
   , sender :: Maybe Integer
   , idData :: Maybe IDData
-  , plugindata :: Maybe PluginData
+  , plugindata :: Maybe DA.Value
   , jsep :: Maybe JSEP
   } deriving (Show,Generic)
 
 instance DA.FromJSON IDData
-instance DA.FromJSON Result
-instance DA.FromJSON PluginDataContent
+--instance DA.FromJSON Result
+--instance DA.FromJSON PluginDataContent
 
 customOptionsPData :: DA.Options
 customOptionsPData = DA.defaultOptions
@@ -58,8 +63,8 @@ customOptionsEvent = DA.defaultOptions
     replaceData  "idData" = "data"
     replaceData a = a
 
-instance DA.FromJSON PluginData where
-  parseJSON = DA.genericParseJSON customOptionsPData
+--instance DA.FromJSON PluginData where
+--  parseJSON = DA.genericParseJSON customOptionsPData
 
 instance DA.FromJSON JanusEvent where
   parseJSON = DA.genericParseJSON customOptionsEvent

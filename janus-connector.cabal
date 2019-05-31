@@ -17,7 +17,9 @@ library
   hs-source-dirs:      src
   ghc-options:         -Wall
   exposed-modules:     Comm.Janus.JanusConnector
+  other-modules:       Comm.Janus.Internal.JanusInternalData
                      , Comm.Janus.Msgs.CallReq
+                     , Comm.Janus.Msgs.EchoReq
                      , Comm.Janus.Msgs.Candidate
                      , Comm.Janus.Msgs.CreateConReq
                      , Comm.Janus.Msgs.CreateHandlerReq
@@ -30,7 +32,8 @@ library
                      , Comm.Janus.Msgs.SessionReq
                      , Comm.Janus.Msgs.TrickleConnectedReq
                      , Comm.Janus.Msgs.TrickleReq
-  other-modules:       Comm.Janus.Internal.JanusInternalData
+                     , Comm.Janus.Msgs.AudioRoomJoinReq
+                     , Comm.Janus.Msgs.AudioRoomConfigureReq
   build-depends:       base >= 4.7 && < 5
                      , protolude 
                      , text
@@ -38,6 +41,7 @@ library
                      , stm-containers
                      , stm
                      , aeson
+                     , unordered-containers
                      , raw-strings-qq
                      , websockets
                      , network
@@ -48,6 +52,32 @@ library
 executable JanusSample
   hs-source-dirs:      Examples
   main-is:             Main.hs
+  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
+  build-depends:       base
+                     , janus-connector
+                     , hslogger
+                     , stm
+                     , text
+                     , protolude 
+  default-language:    Haskell2010
+  default-extensions:  OverloadedStrings, NoImplicitPrelude
+
+executable SipEchoDemo
+  hs-source-dirs:      Examples
+  main-is:             SipEchoDemo.hs
+  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
+  build-depends:       base
+                     , janus-connector
+                     , hslogger
+                     , stm
+                     , text
+                     , protolude 
+  default-language:    Haskell2010
+  default-extensions:  OverloadedStrings, NoImplicitPrelude
+
+executable AudioRoomDemo
+  hs-source-dirs:      Examples
+  main-is:             AudioRoomDemo.hs
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
                      , janus-connector

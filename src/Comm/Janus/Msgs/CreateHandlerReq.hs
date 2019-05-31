@@ -45,6 +45,7 @@ data PluginType
   = Sip
   | EchoTest
   | VoiceMail
+  | AudioBridge
   deriving Show
   
 pluginName :: PluginType -> Text
