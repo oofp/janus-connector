@@ -34,6 +34,9 @@ library
                      , Comm.Janus.Msgs.TrickleReq
                      , Comm.Janus.Msgs.AudioRoomJoinReq
                      , Comm.Janus.Msgs.AudioRoomConfigureReq
+                     , Comm.Janus.Msgs.JanusReq
+                     , Comm.Janus.Msgs.VideoCallCallReq
+                     , Comm.Janus.Msgs.VideoCallRegisterReq
   build-depends:       base >= 4.7 && < 5
                      , protolude 
                      , text
@@ -78,6 +81,19 @@ executable SipEchoDemo
 executable AudioRoomDemo
   hs-source-dirs:      Examples
   main-is:             AudioRoomDemo.hs
+  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
+  build-depends:       base
+                     , janus-connector
+                     , hslogger
+                     , stm
+                     , text
+                     , protolude 
+  default-language:    Haskell2010
+  default-extensions:  OverloadedStrings, NoImplicitPrelude
+
+executable SipVideoCallDemo
+  hs-source-dirs:      Examples
+  main-is:             SipVideoCallDemo.hs
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
                      , janus-connector

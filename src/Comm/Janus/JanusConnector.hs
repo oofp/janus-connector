@@ -5,6 +5,8 @@ module Comm.Janus.JanusConnector
   , JanusCallProgressEventType (..)
   , JanusCallReqPs (..)
   , JanusEchoReqPs (..)
+  , JanusVideoCallReqPs (..)
+  , JanusVideoCallRegReqPs (..)
   , JanusAudioRoomJoinReqPs (..)
   , JanusAudioRoomConfigureReqPs (..)
   , JanusRegisterReqPs (..)
@@ -43,85 +45,120 @@ import Comm.Janus.Msgs.TrickleConnectedReq
 import Comm.Janus.Msgs.HangupReq
 import Comm.Janus.Msgs.AcceptReq
 import Comm.Janus.Msgs.EchoReq
+import qualified Comm.Janus.Msgs.JanusReq as JReq
 import qualified Comm.Janus.Msgs.AudioRoomConfigureReq as ARCfgReq
 import Comm.Janus.Msgs.AudioRoomJoinReq
 import Comm.Janus.Msgs.JSEP
 import Comm.Janus.Msgs.Candidate
 import Data.HashMap.Strict (lookup)
+import qualified Comm.Janus.Msgs.VideoCallCallReq as VCCReq
+import qualified Comm.Janus.Msgs.VideoCallRegisterReq as VCRReq
 
+-- |The SIP Registration event type
 data JanusRegisterEventType
-  = Registering
-  | Registered
-  | RegistrationFailed
+  = Registering -- ^ Registration initiated and in-progress
+  | Registered -- ^ Registration sucessfully completed; You can make call requests now or receive incoming calls
+  | RegistrationFailed -- ^ Registration failed (TODO: expose failure code)
   deriving (Show, Eq)
 
+-- |SIP Call progress event type
 data JanusCallProgressEventType
   = Calling
   | Progress
   | Proceeding
-  | Accepted
+  | Accepted -- ^ Call was answered by remote party
   deriving (Show, Eq)
 
+-- |Janus Server Msg 
+-- |JanusServerMsg is built from events sent by Janus Server
+-- |Some events are secific to certain plugin types 
 data JanusServerMsg
-    = JanusRegisterEvent JanusRegisterEventType
-    | JanusCallProgressEvent JanusCallProgressEventType (Maybe Text) -- sdpAnswer
-    | JanusIncomingCall (Maybe Text)
-    | JanusOKEvent (Maybe Text)
-    | JanusWebRtcUp
-    | JanusHangupEvent
+    = JanusRegisterEvent JanusRegisterEventType -- ^ Registration event (SIP plugin)
+    | JanusCallProgressEvent JanusCallProgressEventType (Maybe Text) -- ^ Call progress with optional JSEP (SIP plugin)
+    | JanusIncomingCall (Maybe Text) -- ^ Incoming call with option JSEP offer (SIP Plugin) 
+    | JanusOKEvent (Maybe Text) -- ^ Generic OK Event with optional JSEP. Used by numnerous plugins
+    | JanusWebRtcUp -- ^ Media pass has been successfully establshed
+    | JanusHangupEvent -- ^ Call has beem disconnected (SIP plugin); TODO: provide disconnect reason
     deriving (Show, Eq)
 
+-- |Janus Register Request Parameters 
 data JanusRegisterReqPs = JanusRegisterReqPs
-  { userName :: Text
-  , displayName :: Text
-  , password :: Text
-  , proxy :: Text
+  { userName :: Text -- ^ User AOR (Address-Of-Record). Like sip:alice@domain.com
+  , displayName :: Text -- ^ User display name
+  , password :: Text -- ^ SIP Authentocation password
+  , proxy :: Text -- ^ Outbound proxy. Like sip:domain.com
   } deriving (Show, Eq)
 
+-- |Janus Call Request Parameters 
 data JanusCallReqPs = JanusCallReqPs
-  { destUri :: Text
-  , sdpOffer :: Text
+  { destUri :: Text -- ^ SIP Address of destination user. Like sip:bob@domain.com
+  , sdpOffer :: Text -- ^ JSEP Offer Text (Session Description of local party)
   } deriving (Show, Eq)
 
+-- |Janus Video Call Request Parameters 
+data JanusVideoCallReqPs = JanusVideoCallReqPs
+  { videoCallDest :: Text -- ^ name of destination user. 
+  , videoCallSdpOffer :: Text -- ^ JSEP Offer Text (Session Description of local party)
+  } deriving (Show, Eq)
+
+-- |Janus Video Call Registration Parameters 
+data JanusVideoCallRegReqPs = JanusVideoCallRegReqPs
+  { videoCallUserName :: Text -- ^ name of registering user. 
+  } deriving (Show, Eq)
+
+-- |Janus Echo Request Parameters   
 data JanusEchoReqPs = JanusEchoReqPs
-  { echoAudio :: Bool
-  , echoVideo :: Bool
-  , echoSdpOffer :: Text
+  { echoAudio :: Bool -- ^ enable audio  
+  , echoVideo :: Bool -- ^ enable video
+  , echoSdpOffer :: Text -- ^ JSEP Offer Text (Session Description of local party)
   } deriving (Show, Eq)
 
-
+-- |Janus Audio Room Request Parameters   
 data JanusAudioRoomJoinReqPs = JanusAudioRoomJoinReqPs
-  { audioRoomNum :: Int
-  , audioRoomDisplay :: Text
+  { audioRoomNum :: Int -- ^ room number to join (room must preexist)
+  , audioRoomDisplay :: Text -- ^ display name of joining party
   } deriving (Show, Eq)
 
+
+-- |Audio Room Configure Request Parameters   
 data JanusAudioRoomConfigureReqPs = JanusAudioRoomConfigureReqPs
-  { audioRoomMute :: Bool
-  , audioRoomSdpOffer :: Text
+  { audioRoomMute :: Bool -- ^ should be muted
+  , audioRoomSdpOffer :: Text -- ^ JSEP Offer Text (Session Description of local party)
   } deriving (Show, Eq)
 
-data JanusClientMsg = JanusDetachHandle
-                    | JanusRegisterReq JanusRegisterReqPs
-                    | JanusCallReq JanusCallReqPs
-                    | JanusEchoReq JanusEchoReqPs
-                    | JanusAudioRoomJoinReq JanusAudioRoomJoinReqPs
-                    | JanusAudioRoomConfigureReq JanusAudioRoomConfigureReqPs
-                    | JanusAcceptReq Text
-                    | JanusTrickleReq Text
-                    | JanusIceConnected
-                    | JanusHangupReq
+-- |Audio Room Configure Request Parameters   
+data JanusClientMsg = JanusDetachHandle -- ^ detach this plugin; ServerHandler is unusable after issuing this request
+                    | JanusRegisterReq JanusRegisterReqPs -- ^ Register request (SIP Plugin)
+                    | JanusCallReq JanusCallReqPs -- ^ Call request (SIP Plugin)
+                    | JanusAcceptReq Text -- ^ Accept incoming call (Accept incoming call)
+                    | JanusHangupReq -- ^ Drop SIP Call
+                    | JanusEchoReq JanusEchoReqPs -- ^ Start Echo Test (EchoTest Plugin)
+                    | JanusAudioRoomJoinReq JanusAudioRoomJoinReqPs -- ^ Join audio room (AudioBridge Plugin)
+                    | JanusAudioRoomConfigureReq JanusAudioRoomConfigureReqPs -- ^ Configure audio room (AudioBridge Plugin)
+                    | JanusVideoCallRegReq JanusVideoCallRegReqPs -- ^ Register request (VideoCall Plugin)
+                    | JanusVideoCallReq JanusVideoCallReqPs -- ^ Video Call request (VideoCall Plugin)
+                    | JanusTrickleReq Text -- ^ Send ICE Candidate description
+                    | JanusIceConnected -- ^ Notify that sending ICE Candidates is completed
                     deriving (Show, Eq)
 
+
+-- |Represent attached plugin and is used to send JanusClientMsg to Janus server    
 type ServerHandler = JanusClientMsg -> IO ()
+-- |Passed by Janus client (application) as function - handler of messages send by Janus   
 type ClientHandler = JanusServerMsg -> IO ()
 
-sendJanusRequest :: JanusClientMsg -> ServerHandler -> IO ()
+-- |Send request to Janus server
+sendJanusRequest :: JanusClientMsg -- ^ Janus client message 
+                 -> ServerHandler -- ^ Server Handler
+                 -> IO ()
 sendJanusRequest =  (&)
 
 data TransData = CreateHandler (MVar (Maybe Integer))
 
 data HandlerState = InitHandlerState ClientHandler
 
+-- |Janus Connector Handle: represents connectivity to one Janus server; 
+-- |Once connection is established can be used to connect to different Janus plugins; 
 data ConHandle = ConHandle
   { connection :: TVar (Maybe WS.Connection)
   , sessionIDAndKeepaliveTask :: TVar (Maybe (Integer, Async ()))
@@ -131,10 +168,14 @@ data ConHandle = ConHandle
   , onewayTransactionCounter :: TVar Integer
   }
 
+  
 loggerPath::String
 loggerPath="JanusCon"
 
-initConnector :: Text -> Int -> IO ConHandle
+-- |Initialize Janus connector (TODO: Allow both ws and wss, notify when connection got closed) 
+initConnector :: Text -- ^ Janus server address (IP or domain)
+              -> Int -- ^ Janus server port
+              -> IO ConHandle -- ^ ConnectionHandle 
 initConnector host port  = do
   conHandle <- atomically $  ConHandle <$> newTVar Nothing <*> newTVar Nothing  <*>  Map.new <*> Map.new <*> newTVar initReqTransID <*> newTVar (-1)
   void $ async $ withSocketsDo $ WS.runClientWith (unpack host) port "/" (WS.defaultConnectionOptions {connectionCompressionOptions=PermessageDeflateCompression defaultPermessageDeflate}) [("Sec-WebSocket-Protocol","janus-protocol")] (app conHandle)
@@ -179,7 +220,11 @@ getSessionID conHandle =
     sessIDMaybe <- readTVar $ sessionIDAndKeepaliveTask conHandle
     return $ fst <$> sessIDMaybe
 
-createHandler :: ConHandle -> PluginType -> ClientHandler -> IO (Maybe ServerHandler)
+-- |Create ServerHandler (connect to Janus plugin).  
+createHandler :: ConHandle -- ^ Janus Connection Handle 
+              -> PluginType -- ^ Plugin type (SIP, EchoTest, AudioBridge, etc) 
+              -> ClientHandler -- ^ Janus message handler
+              -> IO (Maybe ServerHandler) -- ^ Janus Server handler
 createHandler conHandle janusPlugin clientHandler = do
     sessIDMaybe <- getSessionID conHandle
     case sessIDMaybe of
@@ -272,6 +317,8 @@ handleSessionResponse conHandle _sessID janusEv =
       getOKResultEvent (lookup "result" sipData)
     getPluginDataEvent (Just "janus.plugin.audiobridge") (Just (DA.Object sipData)) = 
       getOKResultEvent (lookup "result" sipData)
+    getPluginDataEvent (Just "janus.plugin.videocall") (Just (DA.Object sipData)) = 
+      getVideoCallResultEvent (lookup "result" sipData)
     getPluginDataEvent _ _ = Nothing
     --
     getSipResultEvent (Just (DA.Object resObject))  = lookup "event" resObject >>= getSipEvent 
@@ -290,6 +337,13 @@ handleSessionResponse conHandle _sessID janusEv =
     getSipEvent "accepted" = Just $ JanusCallProgressEvent Accepted jsp
     getSipEvent "hangup" = Just JanusHangupEvent
     getSipEvent _ = Nothing
+    --
+    getVideoCallResultEvent (Just (DA.Object resObject))  = lookup "event" resObject >>= getVideoCallEvent 
+    getVideoCallResultEvent _ = Nothing
+    getVideoCallEvent "incomingcall" =  Just $ JanusIncomingCall jsp --TODO: retrieve caller id
+    getVideoCallEvent "hangup" = Just JanusHangupEvent
+    getVideoCallEvent "accepted" = Just $ JanusCallProgressEvent Accepted jsp
+    getVideoCallEvent _ = Nothing
     --
     jsp = encodeJSEP <$> jsep janusEv
     handleEvent senderID evToSend = do
@@ -364,7 +418,22 @@ handleClientRequest conHandle sessID handlerID (JanusAudioRoomConfigureReq pars)
       transID <- newTransID conHandle
       infoM  loggerPath ("handleClientRequest (audioRoom) transID:" <> show transID)
       sendRequest' (ARCfgReq.audioRoomConfigureReq (audioRoomMute pars) jsepOffer sessID handlerID transID) conHandle
-        
+handleClientRequest conHandle sessID handlerID (JanusVideoCallReq pars) = do
+  infoM  loggerPath ("handleClientRequest (JanusVideoCallReq):" <> show pars)
+  let jsepMaybe=decodeJSEP (videoCallSdpOffer pars)
+  infoM  loggerPath ("handleClientRequest (videoCall/jsep):" <> show jsepMaybe)
+  case jsepMaybe of
+    Nothing -> warningM  loggerPath ("Failed to decode (videoRoom/sdp) offer:" <> show pars)
+    Just jsepOffer -> do
+      infoM  loggerPath ("handleClientRequest (videoCall) offer decoded:" <> show jsepOffer)
+      transID <- newTransID conHandle
+      infoM  loggerPath ("handleClientRequest (videoRoom) transID:" <> show transID)
+      sendRequest' (JReq.buildJanusReqWithJsep (VCCReq.VideoCallCallReqPs (videoCallDest pars)) jsepOffer sessID handlerID transID) conHandle
+handleClientRequest conHandle sessID handlerID (JanusVideoCallRegReq pars) = do
+  infoM  loggerPath ("handleClientRequest (JanusVideoCallRegReq):" <> show pars)
+  transID <- newTransID conHandle
+  sendRequest' (JReq.buildJanusReq (VCRReq.VideoCallRegisterReqPs (videoCallUserName pars)) sessID handlerID transID) conHandle
+                
 createServerHandler :: ConHandle -> Integer -> Integer -> ServerHandler
 createServerHandler = handleClientRequest
 
@@ -391,7 +460,9 @@ sendRequest' obj conHandle = do
 isJanusConnected :: ConHandle -> STM Bool
 isJanusConnected  conHandle = fmap isJust (readTVar $ sessionIDAndKeepaliveTask conHandle)
 
-waitForConnectivity :: ConHandle -> IO () 
+-- |Block until connectivity with Janus is established (TODO: Consider changing to withConnector)  
+waitForConnectivity :: ConHandle -- ^ Janus Connection Handle 
+                    -> IO () 
 waitForConnectivity conHandle = atomically $ do 
   isConnected <- isJanusConnected conHandle
   unless isConnected retry 

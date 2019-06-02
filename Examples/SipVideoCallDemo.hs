@@ -15,7 +15,7 @@ main = do
   putStrLn ("Welcome to Janus sample app "::Text)
   args <- getArgs
   case args of 
-    [srvIP, portTxt, sipAOR, sipDisplayName, sipPwd, sipAOR2, sipDisplayName2, sipPwd2, sipProxy, dest] ->
+    [srvIP, portTxt, sipAOR, sipDisplayName, sipPwd, sipProxy, dest] ->
       let srvPortMaybe :: Maybe Int
           srvPortMaybe = readMaybe portTxt
       in case srvPortMaybe of
@@ -26,62 +26,53 @@ main = do
                           , password = pack sipPwd
                           , proxy = pack sipProxy
                           }
-              regReq2 = JanusRegisterReqPs
-                          { userName = pack sipAOR2
-                          , displayName = pack sipDisplayName2
-                          , password = pack sipPwd2
-                          , proxy = pack sipProxy
-                          }
-          in runTest (pack srvIP) srvPort regReq regReq2 (pack dest)
+          in runTest (pack srvIP) srvPort regReq (pack dest)
         Nothing ->
           putStrLn ("Failed to parse sip port (must be Int)"::Text)
-    _ -> do putStrLn ("Parametrs: srvIP srvPort sipAOR sipDisplayName sipPwd sipAOR2 sipDisplayName2 sipPwd2 sipProxy dest"::Text)        
-            putStrLn ("For example: JanusSample janusserver.com 8188 sip:user@sipprovider.com John 123456 sip:user2@sipprovider.com James 654321 sip:sipprovider.com sip:18001234567@sipprovider.com"::Text)        
+    _ -> do putStrLn ("Parametrs: srvIP srvPort sipAOR sipDisplayName sipPwd sipProxy dest"::Text)        
+            putStrLn ("For example: JanusSample janusserver.com 8188 sip:user@sipprovider.com John 123456 sip:sipprovider.com Bob"::Text)        
 
 
-runTest :: Text -> Int -> JanusRegisterReqPs -> JanusRegisterReqPs -> Text -> IO ()
-runTest srvIP port janusRegisterReqPs janusRegisterReqPs2 dest = do
+runTest :: Text -> Int -> JanusRegisterReqPs -> Text -> IO ()
+runTest srvIP port janusRegisterReqPs dest = do
   setupLog
   connectorHandle <- initConnector srvIP port
   waitForConnectivity connectorHandle
   msgChan <- newTChanIO   
-  srvHandlerMaybe <- createHandler connectorHandle Sip (janusSipCallback msgChan 0)
-  srvHandlerMaybe2 <- createHandler connectorHandle Sip (janusSipCallback msgChan 1) 
+  srvHandlerMaybe <- createHandler connectorHandle Sip (janusCallback msgChan 0)
+  srvHandlerMaybe2 <- createHandler connectorHandle VideoCall (janusCallback msgChan 1) 
   case (srvHandlerMaybe, srvHandlerMaybe2) of
-    (Just sipHandler, Just sipHandler2) -> do
+    (Just sipHandler, Just videoCallHandler) -> do
       sendJanusRequest (JanusRegisterReq janusRegisterReqPs) sipHandler  
-      sendJanusRequest (JanusRegisterReq janusRegisterReqPs2) sipHandler2  
-      channelLoop msgChan sipHandler sipHandler2 dest
+      sendJanusRequest (JanusVideoCallRegReq (JanusVideoCallRegReqPs "sipAgent")) videoCallHandler  
+      channelLoop msgChan sipHandler videoCallHandler dest
       putStrLn ("Press [Enter] to exit"::Text)
       void getLine
     _ -> putStrLn ("Failed to create some handlers"::Text)
    
-janusSipCallback :: TChan (Int,JanusServerMsg) -> Int -> JanusServerMsg -> IO ()
-janusSipCallback chan num janusServerMsg = do
+janusCallback :: TChan (Int,JanusServerMsg) -> Int -> JanusServerMsg -> IO ()
+janusCallback chan num janusServerMsg = do
   putStrLn $ ("Janus event received (SIP)/"::Text) <> show num <> ("-->"::Text) <> show janusServerMsg
   atomically $ writeTChan chan (num,janusServerMsg)
   
 channelLoop :: TChan (Int,JanusServerMsg) -> ServerHandler -> ServerHandler -> Text -> IO ()
-channelLoop msgChan sipHandler sipHandler2 dest = 
+channelLoop msgChan sipHandler videoCallHandler dest = 
     goLoop
   where
     goLoop = do
       (num, msg) <- atomically $ readTChan msgChan
-      let otherHandler = if num==0 then sipHandler2 else sipHandler
-          thisHandler =  if num==0 then sipHandler else sipHandler2
-      case msg of 
-        JanusCallProgressEvent  Accepted (Just answer) -> do
-          sendJanusRequest (JanusAcceptReq answer) otherHandler
-          sendJanusRequest JanusIceConnected otherHandler
-          sendJanusRequest JanusIceConnected thisHandler
-        JanusIncomingCall (Just offer) -> sendJanusRequest (JanusCallReq (JanusCallReqPs dest offer)) otherHandler 
+      case (num,msg) of 
+        (0, JanusIncomingCall (Just offer)) -> sendJanusRequest (JanusVideoCallReq (JanusVideoCallReqPs dest offer)) videoCallHandler 
+        (1, JanusCallProgressEvent  Accepted (Just answer)) -> do
+          sendJanusRequest (JanusAcceptReq answer) sipHandler
+          sendJanusRequest JanusIceConnected videoCallHandler
         --JanusWebRtcUp -> goLoop
-        JanusHangupEvent -> sendJanusRequest JanusHangupReq otherHandler  -- exit
+        (1,JanusIncomingCall (Just _sdpOffer)) -> sendJanusRequest JanusHangupReq videoCallHandler -- TODO: support call in opposite direction
+        (0,JanusHangupEvent) -> sendJanusRequest JanusHangupReq videoCallHandler  
+        (1,JanusHangupEvent) -> sendJanusRequest JanusHangupReq sipHandler  
         _ -> return ()
       goLoop    
 
-
-  
 setupLog::IO()
 setupLog=do
   let rootLog = "JanusCon"
@@ -94,5 +85,6 @@ setupLog=do
 
   debugM rootLog "Logger started"
   
+
 
 -- C:\repo\trunk\androidApps\hs\wr\janus\.stack-work\install\4ce01a7c\doc\all\index.html  

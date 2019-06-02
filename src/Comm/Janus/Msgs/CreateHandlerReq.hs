@@ -41,11 +41,15 @@ createHandlerReq pluginType sessID transID =
     , session_id = sessID
     }
 
+
+
+-- |Plugin type (TODO: add more plugins)       
 data PluginType 
   = Sip
   | EchoTest
   | VoiceMail
   | AudioBridge
+  | VideoCall
   deriving Show
   
 pluginName :: PluginType -> Text

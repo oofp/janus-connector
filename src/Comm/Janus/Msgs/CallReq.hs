@@ -23,6 +23,7 @@ import Comm.Janus.Msgs.JSEP
 }
 -}
 
+--TODO: allow passing secret in CallReq with no need to register first when making outbound call
 data CallReqBody = CallReqBody
   { request :: Text -- call
   , uri :: Text
