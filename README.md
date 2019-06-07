@@ -1,3 +1,3 @@
-# webTools
+# janus-connector
 
-add description of webTools here
+Haskell low level binding of [Janus Gateway](https://github.com/meetecho/janus-gateway) client protocol using websockets protocol
