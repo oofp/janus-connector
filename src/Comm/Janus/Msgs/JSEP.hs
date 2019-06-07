@@ -19,12 +19,14 @@ import qualified Data.ByteString.Lazy as BL
 data JSEP = JSEP
   { offerAnswer :: Text
   , sdp :: Text
+  , trickle :: Maybe Bool
   } deriving (Show,Generic)
 
 
 customOptions :: DA.Options
 customOptions = DA.defaultOptions
     { DA.fieldLabelModifier = replaceData
+    , DA.omitNothingFields = True
     }
   where
     replaceData "offerAnswer" = "type"

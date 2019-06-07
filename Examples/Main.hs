@@ -68,14 +68,10 @@ channelLoop msgChan sipHandler sipHandler2 dest =
     goLoop = do
       (num, msg) <- atomically $ readTChan msgChan
       let otherHandler = if num==0 then sipHandler2 else sipHandler
-          thisHandler =  if num==0 then sipHandler else sipHandler2
       case msg of 
         JanusCallProgressEvent  Accepted (Just answer) -> do
           sendJanusRequest (JanusAcceptReq answer) otherHandler
-          sendJanusRequest JanusIceConnected otherHandler
-          sendJanusRequest JanusIceConnected thisHandler
         JanusIncomingCall (Just offer) -> sendJanusRequest (JanusCallReq (JanusCallReqPs dest offer)) otherHandler 
-        --JanusWebRtcUp -> goLoop
         JanusHangupEvent -> sendJanusRequest JanusHangupReq otherHandler  -- exit
         _ -> return ()
       goLoop    

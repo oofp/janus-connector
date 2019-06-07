@@ -249,8 +249,8 @@ createHandler' conHandle janusPlugin clientHandler sessID = do
 handleIncomingMessage :: ConHandle -> LBStr.ByteString -> IO  ()
 handleIncomingMessage conHandle msgBytes =
   let janusEvEither = DA.eitherDecode msgBytes
-  in --do
-    --debugM loggerPath  ("Messages decoded:" <> show janusEvEither)
+  in do
+    debugM loggerPath  ("Messages decoded:" <> show janusEvEither)
     case janusEvEither of
       Right janusEv ->
         let transIDMaybe = join $ (readMaybe . unpack) <$> Comm.Janus.Msgs.JanusEvent.transaction janusEv
@@ -466,3 +466,20 @@ waitForConnectivity :: ConHandle -- ^ Janus Connection Handle
 waitForConnectivity conHandle = atomically $ do 
   isConnected <- isJanusConnected conHandle
   unless isConnected retry 
+
+
+{- no needed  
+modifyJSEPTxt ::  Text -> (Text -> Text) -> Maybe Text
+modifyJSEPTxt jsepTxt f = 
+ case decodeJSEP jsepTxt of
+  Nothing ->Nothing
+  Just curJsep -> Just $ encodeJSEP (JSEP (offerAnswer curJsep) (f (sdp curJsep)) (trickle curJsep))
+
+
+setJSEPTrickle ::  Text -> Maybe Bool -> Maybe Text
+setJSEPTrickle jsepTxt tr = 
+  case decodeJSEP jsepTxt of
+    Nothing ->Nothing
+    Just curJsep -> Just $ encodeJSEP $ curJsep {trickle = tr}
+  
+-}

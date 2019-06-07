@@ -3,7 +3,7 @@ module Main where
 import Protolude
 import System.Environment (getArgs)
 import Comm.Janus.JanusConnector
-import Data.Text (pack)
+import Data.Text (pack, replace)
 import System.Log.Logger
 import System.Log.Handler (setFormatter)
 import System.Log.Formatter
@@ -55,6 +55,9 @@ janusCallback chan num janusServerMsg = do
   putStrLn $ ("Janus event received (SIP)/"::Text) <> show num <> ("-->"::Text) <> show janusServerMsg
   atomically $ writeTChan chan (num,janusServerMsg)
   
+adjustTrickle :: Text -> Text
+adjustTrickle sdpTxt = Data.Text.replace "a=ice-options:trickle" "a=trickle:false" sdpTxt
+
 channelLoop :: TChan (Int,JanusServerMsg) -> ServerHandler -> ServerHandler -> Text -> IO ()
 channelLoop msgChan sipHandler videoCallHandler dest = 
     goLoop
@@ -62,11 +65,11 @@ channelLoop msgChan sipHandler videoCallHandler dest =
     goLoop = do
       (num, msg) <- atomically $ readTChan msgChan
       case (num,msg) of 
-        (0, JanusIncomingCall (Just offer)) -> sendJanusRequest (JanusVideoCallReq (JanusVideoCallReqPs dest offer)) videoCallHandler 
+        (0, JanusIncomingCall (Just offer)) -> do
+          sendJanusRequest (JanusVideoCallReq (JanusVideoCallReqPs dest offer)) videoCallHandler 
         (1, JanusCallProgressEvent  Accepted (Just answer)) -> do
           sendJanusRequest (JanusAcceptReq answer) sipHandler
-          sendJanusRequest JanusIceConnected videoCallHandler
-        --JanusWebRtcUp -> goLoop
+        (partyNum,JanusWebRtcUp) -> putStrLn (("************ Media path established#"::Text) <> show partyNum)
         (1,JanusIncomingCall (Just _sdpOffer)) -> sendJanusRequest JanusHangupReq videoCallHandler -- TODO: support call in opposite direction
         (0,JanusHangupEvent) -> sendJanusRequest JanusHangupReq videoCallHandler  
         (1,JanusHangupEvent) -> sendJanusRequest JanusHangupReq sipHandler  

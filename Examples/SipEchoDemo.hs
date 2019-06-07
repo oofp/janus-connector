@@ -77,17 +77,11 @@ channelLoop msgChan sipHandler echoHandler =
     goLoop = do
       msgWithSource <- atomically $ readTChan msgChan
       case msgWithSource of 
-        (SipMsg, JanusIncomingCall (Just offer)) -> sendJanusRequest (JanusEchoReq (JanusEchoReqPs True False offer)) echoHandler 
+        (SipMsg, JanusIncomingCall (Just offer)) -> do
+          sendJanusRequest (JanusEchoReq (JanusEchoReqPs True False offer)) echoHandler 
         (EchoMsg, JanusOKEvent (Just answer)) -> do
           sendJanusRequest (JanusAcceptReq answer) sipHandler 
-          --threadDelay 1000000
-          sendJanusRequest JanusIceConnected sipHandler
-        {-
-        JanusCallProgressEvent  Accepted (Just answer) -> sendJanusRequest (JanusAcceptReq answer) otherHandler
-        JanusIncomingCall (Just offer) -> sendJanusRequest (JanusCallReq (JanusCallReqPs dest offer)) otherHandler 
-        --JanusWebRtcUp -> goLoop
-        JanusHangupEvent -> sendJanusRequest JanusHangupReq otherHandler  -- exit
-        -} 
+        (SipMsg, JanusHangupEvent) -> return () -- TODO detach echo test 
         _ -> return ()
       goLoop    
 
