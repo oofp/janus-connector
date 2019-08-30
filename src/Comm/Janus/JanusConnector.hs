@@ -144,7 +144,7 @@ data JanusClientMsg = JanusDetachHandle -- ^ detach this plugin; ServerHandler i
 
 -- |Represent attached plugin and is used to send JanusClientMsg to Janus server    
 type ServerHandler = JanusClientMsg -> IO ()
--- |Passed by Janus client (application) as function - handler of messages send by Janus   
+-- |Passed by Janus client (application) as function - handler of messages sent by Janus   
 type ClientHandler = JanusServerMsg -> IO ()
 
 -- |Send request to Janus server
