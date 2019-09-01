@@ -18,6 +18,7 @@ module Comm.Janus.JanusConnector
   , createHandler
   , sendJanusRequest
   , waitForConnectivity
+  , JSEP 
   ) where
 
 import qualified Network.WebSockets  as WS
