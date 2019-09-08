@@ -44,6 +44,7 @@ import qualified Comm.Janus.Msgs.CallReq as CR
 import Comm.Janus.Msgs.TrickleReq
 import Comm.Janus.Msgs.TrickleConnectedReq
 import Comm.Janus.Msgs.HangupReq
+import Comm.Janus.Msgs.LeaveReq
 import Comm.Janus.Msgs.AcceptReq
 import Comm.Janus.Msgs.EchoReq
 import qualified Comm.Janus.Msgs.JanusReq as JReq
@@ -133,6 +134,7 @@ data JanusClientMsg = JanusDetachHandle -- ^ detach this plugin; ServerHandler i
                     | JanusCallReq JanusCallReqPs -- ^ Call request (SIP Plugin)
                     | JanusAcceptReq Text -- ^ Accept incoming call (Accept incoming call)
                     | JanusHangupReq -- ^ Drop SIP Call
+                    | JanusLeaveReq -- ^ Leave room or bridge
                     | JanusEchoReq JanusEchoReqPs -- ^ Start Echo Test (EchoTest Plugin)
                     | JanusAudioRoomJoinReq JanusAudioRoomJoinReqPs -- ^ Join audio room (AudioBridge Plugin)
                     | JanusAudioRoomConfigureReq JanusAudioRoomConfigureReqPs -- ^ Configure audio room (AudioBridge Plugin)
@@ -393,6 +395,9 @@ handleClientRequest conHandle sessID handlerID JanusIceConnected = do
 handleClientRequest conHandle sessID handlerID JanusHangupReq = do
   transID <- newOnewayTransID conHandle
   sendRequest' (hangupReq sessID handlerID transID) conHandle
+handleClientRequest conHandle sessID handlerID JanusLeaveReq = do
+    transID <- newOnewayTransID conHandle
+    sendRequest' (leaveReq sessID handlerID transID) conHandle
 handleClientRequest conHandle sessID handlerID (JanusEchoReq echoReqPs) = do
   infoM  loggerPath ("handleClientRequest (echo):" <> show echoReqPs)
   let jsepMaybe=decodeJSEP (echoSdpOffer echoReqPs)

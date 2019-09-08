@@ -76,6 +76,7 @@ channelLoop msgChan sipHandler arHandler room display =
           sendJanusRequest (JanusAudioRoomConfigureReq (JanusAudioRoomConfigureReqPs False offer)) arHandler 
         (ARMsg, JanusOKEvent (Just answer)) -> do
           sendJanusRequest (JanusAcceptReq answer) sipHandler 
+        -- (SipMsg, JanusHangupEvent) -> sendJanusRequest JanusLeaveReq arHandler  
         _ -> return ()
       goLoop    
 
