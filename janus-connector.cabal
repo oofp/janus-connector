@@ -24,6 +24,7 @@ library
                      , Comm.Janus.Msgs.CreateConReq
                      , Comm.Janus.Msgs.CreateHandlerReq
                      , Comm.Janus.Msgs.DetachHandlerReq
+                     , Comm.Janus.Msgs.DeclineReq
                      , Comm.Janus.Msgs.HangupReq
                      , Comm.Janus.Msgs.LeaveReq
                      , Comm.Janus.Msgs.JSEP

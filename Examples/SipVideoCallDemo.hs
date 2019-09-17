@@ -55,34 +55,39 @@ runTest srvIP port janusRegisterReqPs videoDest sipDest = do
     (Just sipHandler, Just videoCallHandler) -> do
       sendJanusRequest (JanusRegisterReq janusRegisterReqPs) sipHandler  
       sendJanusRequest (JanusVideoCallRegReq (JanusVideoCallRegReqPs "Bob")) videoCallHandler  
-      channelLoop msgChan sipHandler videoCallHandler videoDest sipDest
+      channelLoop msgChan sipHandler videoCallHandler videoDest sipDest 
       putStrLn ("Press [Enter] to exit"::Text)
       void getLine
     _ -> putStrLn ("Failed to create some handlers"::Text)
    
-janusCallback :: TChan PartyMessage -> PartyType -> JanusServerMsg -> IO ()
+janusCallback :: TChan PartyMessage -> PartyType -> JanusServerMsg  -> IO ()
 janusCallback chan thisParty janusServerMsg = do
   putStrLn $ ("Janus event received (SIP)/"::Text) <> show thisParty <> ("-->"::Text) <> show janusServerMsg
   atomically $ writeTChan chan (PartyMessage thisParty janusServerMsg)
   
 channelLoop :: TChan PartyMessage -> ServerHandler -> ServerHandler -> Text -> Text -> IO ()
 channelLoop msgChan sipHandler videoCallHandler videoDest sipDest = 
-    goLoop
+    void $ goLoop False 
   where
-    goLoop = do
+    goLoop :: Bool -> IO Bool
+    goLoop flUseSipDecline = do
       (PartyMessage msgParty newMsg) <- atomically $ readTChan msgChan
-      case (msgParty, newMsg) of 
-        (SipParty, (JanusIncomingCall (Just offer))) -> do
-          sendJanusRequest (JanusVideoCallReq (JanusVideoCallReqPs videoDest offer)) videoCallHandler 
+      flNewAnswered <- case (msgParty, newMsg) of 
+        (SipParty, (JanusIncomingCall (Just offer))) -> 
+          sendJanusRequest (JanusVideoCallReq (JanusVideoCallReqPs videoDest offer)) videoCallHandler >> return True
         (VideoParty,JanusIncomingCall (Just offer)) -> do 
           putStrLn ("************ Send MakeCall request to SIP"::Text)
-          sendJanusRequest (JanusCallReq (JanusCallReqPs sipDest offer)) sipHandler 
-        (party, JanusCallProgressEvent  Accepted (Just answer)) -> do
-          sendJanusRequest (JanusAcceptReq answer) (otherHandler party)
-        (party, JanusWebRtcUp) -> putStrLn (("************ Media path established#"::Text) <> show party)
-        (party, JanusHangupEvent) -> sendJanusRequest JanusHangupReq (otherHandler party)  
-        _ -> return () -- do nothing
-      goLoop
+          sendJanusRequest (JanusCallReq (JanusCallReqPs sipDest offer)) sipHandler >> return False
+        (party, JanusCallProgressEvent  Accepted (Just answer)) ->
+          sendJanusRequest (JanusAcceptReq answer) (otherHandler party) >> return False
+        (party, JanusWebRtcUp) -> putStrLn (("************ Media path established#"::Text) <> show party) >> return flUseSipDecline
+        (party, JanusHangupEvent) -> do 
+          if flUseSipDecline && party == VideoParty
+            then sendJanusRequest JanusDeclineReq (otherHandler party)  
+            else sendJanusRequest JanusHangupReq (otherHandler party)
+          return flUseSipDecline  
+        _ -> return flUseSipDecline -- do nothing
+      goLoop flNewAnswered
     otherHandler SipParty = videoCallHandler      
     otherHandler VideoParty = sipHandler      
 
