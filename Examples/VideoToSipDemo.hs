@@ -48,14 +48,14 @@ runTest srvIP port janusRegisterReqPs videoDest sipDest = do
   setupLog
   connectorHandle <- initConnector srvIP port
   waitForConnectivity connectorHandle
-  msgChan <- newTChanIO   
-  srvHandlerMaybe <- createHandler connectorHandle Sip (janusCallback msgChan SipParty)
-  srvHandlerMaybe2 <- createHandler connectorHandle VideoCall (janusCallback msgChan VideoParty) 
+  msgQueue <- newTChanIO   
+  srvHandlerMaybe <- createHandler connectorHandle Sip (janusCallback msgQueue SipParty)
+  srvHandlerMaybe2 <- createHandler connectorHandle VideoCall (janusCallback msgQueue VideoParty) 
   case (srvHandlerMaybe, srvHandlerMaybe2) of
-    (Just sipHandler, Just videoCallHandler) -> do
-      sendJanusRequest (JanusRegisterReq janusRegisterReqPs) sipHandler  
-      sendJanusRequest (JanusVideoCallRegReq (JanusVideoCallRegReqPs videoDest)) videoCallHandler  
-      channelLoop msgChan sipHandler videoCallHandler sipDest 
+    (Just sipPlugin, Just videoPlugin) -> do
+      sendJanusRequest (JanusRegisterReq janusRegisterReqPs) sipPlugin  
+      sendJanusRequest (JanusVideoCallRegReq (JanusVideoCallRegReqPs videoDest)) videoPlugin  
+      channelLoop msgQueue sipPlugin videoPlugin sipDest 
       putStrLn ("Press [Enter] to exit"::Text)
       void getLine
     _ -> putStrLn ("Failed to create some handlers"::Text)
@@ -66,20 +66,20 @@ janusCallback chan thisParty janusServerMsg = do
   atomically $ writeTChan chan (PartyMessage thisParty janusServerMsg)
   
 channelLoop :: TChan PartyMessage -> ServerHandler -> ServerHandler -> Text -> IO ()
-channelLoop msgChan sipHandler videoCallHandler sipDest = 
+channelLoop msgQueue sipPlugin videoPlugin sipDest = 
     forever $ do
-      (PartyMessage msgParty newMsg) <- atomically $ readTChan msgChan
+      (PartyMessage msgParty newMsg) <- atomically $ readTChan msgQueue
       case (msgParty, newMsg) of 
         (VideoParty,JanusIncomingCall (Just offer)) ->  
-          sendJanusRequest (JanusCallReq (JanusCallReqPs sipDest offer)) sipHandler 
+          sendJanusRequest (JanusCallReq (JanusCallReqPs sipDest offer)) sipPlugin 
         (SipParty, JanusCallProgressEvent  Accepted (Just answer)) ->
-          sendJanusRequest (JanusAcceptReq answer) videoCallHandler 
+          sendJanusRequest (JanusAcceptReq answer) videoPlugin 
         (party, JanusWebRtcUp) -> putStrLn (("JanusWebRtcUp"::Text) <> show party)
-        (party, JanusHangupEvent) -> sendJanusRequest JanusHangupReq (otherHandler party)
+        (party, JanusHangupEvent) -> sendJanusRequest JanusHangupReq (otherPlugin party)
         _ -> return ()
   where
-    otherHandler SipParty = videoCallHandler      
-    otherHandler VideoParty = sipHandler      
+    otherPlugin SipParty = videoPlugin      
+    otherPlugin VideoParty = sipPlugin      
 
 setupLog::IO()
 setupLog=do
