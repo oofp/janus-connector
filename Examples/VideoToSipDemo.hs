@@ -10,6 +10,11 @@ import System.Log.Formatter
 import System.Log.Handler.Simple (fileHandler)
 import Control.Concurrent.STM.TChan
 
+type ServerAddress = Text
+type Port = Int
+type VideoUserName = Text
+type SipAddress = Text 
+
 main :: IO ()
 main = do
   putStrLn ("Welcome to Video To Sip Janus demo app "::Text)
@@ -32,40 +37,53 @@ main = do
     _ -> do putStrLn ("Parametrs: srvIP srvPort sipAOR sipDisplayName sipPwd sipProxy videoDest sipDest"::Text)        
             putStrLn ("For example: JanusSample janusserver.com 8188 sip:user@sipprovider.com John 123456 sip:sipprovider.com Bob Alice@sipprovider.com"::Text)        
 
-
+-- Example of Haskell enum (sum type)
 data PartyType 
   = VideoParty            
   | SipParty
   deriving (Show, Eq)
 
+-- Example of Haskell record (sum type)
 data PartyMessage = PartyMessage 
   { partyType :: PartyType
   , msg :: JanusServerMsg 
   }
 
-runTest :: Text -> Int -> JanusRegisterReqPs -> Text -> Text -> IO ()
-runTest srvIP port janusRegisterReqPs videoDest sipDest = do
+-- VideoCall To Sip plugin call  
+runTest :: ServerAddress -> Port -> JanusRegisterReqPs -> VideoUserName -> SipAddress -> IO ()  
+runTest srvIP port janusRegisterReqPs videoUserName sipAddress = do
   setupLog
-  connectorHandle <- initConnector srvIP port
+  -- connecting to Janus
+  connectorHandle <- initConnector srvIP port --notice type inference we don't specify types , it is still typesafe 
   waitForConnectivity connectorHandle
-  msgQueue <- newTChanIO   
-  srvHandlerMaybe <- createHandler connectorHandle Sip (janusCallback msgQueue SipParty)
-  srvHandlerMaybe2 <- createHandler connectorHandle VideoCall (janusCallback msgQueue VideoParty) 
-  case (srvHandlerMaybe, srvHandlerMaybe2) of
+  -- create queue where both incoming video and SIP plugins messages are placed
+  msgQueue <- newTChanIO                              
+  -- attach to SIP plugin, pass function that places incoming Sip message to the queue (partially applied)
+  sipPluginMaybe <- createHandler connectorHandle Sip (janusCallback msgQueue SipParty)
+  -- attach to Video plugin, pass function that places incoming Vido message to the queue (partially applied)
+  videoPluginMaybe <- createHandler connectorHandle VideoCall (janusCallback msgQueue VideoParty) 
+  -- proceed with successfully attached to both plugins
+  case (sipPluginMaybe, videoPluginMaybe) of
     (Just sipPlugin, Just videoPlugin) -> do
+      -- SIP registration request 
       sendJanusRequest (JanusRegisterReq janusRegisterReqPs) sipPlugin  
-      sendJanusRequest (JanusVideoCallRegReq (JanusVideoCallRegReqPs videoDest)) videoPlugin  
-      channelLoop msgQueue sipPlugin videoPlugin sipDest 
+      -- Video user registration
+      sendJanusRequest (JanusVideoCallRegReq (JanusVideoCallRegReqPs videoUserName)) videoPlugin  
+      -- run processing loop in separate thread
+      asyncTask <- async (channelLoop msgQueue sipPlugin videoPlugin sipAddress) 
       putStrLn ("Press [Enter] to exit"::Text)
       void getLine
+      -- cancel processing loop
+      cancel asyncTask
     _ -> putStrLn ("Failed to create some handlers"::Text)
    
 janusCallback :: TChan PartyMessage -> PartyType -> JanusServerMsg  -> IO ()
 janusCallback chan thisParty janusServerMsg = do
-  putStrLn $ ("Janus event received (SIP)/"::Text) <> show thisParty <> ("-->"::Text) <> show janusServerMsg
+  putStrLn $ ("Janus message received"::Text) <> show thisParty <> ("-->"::Text) <> show janusServerMsg
   atomically $ writeTChan chan (PartyMessage thisParty janusServerMsg)
   
-channelLoop :: TChan PartyMessage -> ServerHandler -> ServerHandler -> Text -> IO ()
+channelLoop :: TChan PartyMessage -- queue of incoming messages 
+            -> ServerHandler -> ServerHandler -> SipAddress -> IO ()
 channelLoop msgQueue sipPlugin videoPlugin sipDest = 
     forever $ do
       (PartyMessage msgParty newMsg) <- atomically $ readTChan msgQueue
